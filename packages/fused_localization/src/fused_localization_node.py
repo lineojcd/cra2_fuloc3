@@ -161,33 +161,16 @@ class FusedLocNode(DTROS):
         self.tf_bcaster = TransformBroadcaster()
         self.tf_listener = TransformListener()
         # apriltag detector
-        self.at_detector = Detector(families='tag36h11',
-                       nthreads=4,
-                       quad_decimate=4.0,
-                       quad_sigma=0.0,
-                       refine_edges=1,
-                       decode_sharpening=0.25,
-                       debug=0)
+        self.at_detector = Detector(families='tag36h11',nthreads=4,quad_decimate=4.0,quad_sigma=0.0,refine_edges=1,decode_sharpening=0.25,debug=0)
 
 ############################## subscribers and publishers ####################################
         
-        self.sub_camera_info = Subscriber(
-            f'/{self.veh_name}/camera_node/camera_info', 
-            CameraInfo,
-            self.cb_camera_info, 
-            queue_size=1
-        )
+        self.sub_camera_info = Subscriber(f'/{self.veh_name}/camera_node/camera_info', CameraInfo,self.cb_camera_info, queue_size=1)
         self.log(f"Subcribing to topic {f'/{self.veh_name}/camera_node/camera_info'}")
 
 
-        self.sub_compressed_image = rospy.Subscriber(
-            f'/{self.veh_name}/camera_node/image/compressed',
-            CompressedImage,
-            self.cb_compressed_image,
-            queue_size=1
-        )
+        self.sub_compressed_image = rospy.Subscriber(f'/{self.veh_name}/camera_node/image/compressed',CompressedImage,self.cb_compressed_image,queue_size=1)
         self.log(f"listening to {f'/{self.veh_name}/camera_node/image/compressed'}")
-
         self.log("Class EncoderLocNode initialized")
     
     
@@ -203,8 +186,7 @@ class FusedLocNode(DTROS):
 
         # Locate calibration yaml file or use the default otherwise
         if not os.path.isfile(cali_file):
-            self.log("Can't find calibration file: %s.\n Using default calibration instead."
-                     % cali_file, 'warn')
+            self.log("Can't find calibration file: %s.\n Using default calibration instead."% cali_file, 'warn')
             cali_file = (cali_file_folder + "default.yaml")
 
         # Shutdown if no calibration file not found
@@ -212,7 +194,6 @@ class FusedLocNode(DTROS):
             msg = 'Found no calibration file ... aborting'
             self.log(msg, 'err')
             rospy.signal_shutdown(msg)
-
         try:
             with open(cali_file,'r') as stream:
                 calib_data = yaml.load(stream)
@@ -220,17 +201,12 @@ class FusedLocNode(DTROS):
             msg = 'Error in parsing calibration file %s ... aborting' % cali_file
             self.log(msg, 'err')
             rospy.signal_shutdown(msg)
-
         return calib_data['homography']
 
     def update_encoder_baselink(self):
         # get encoder pose from TF tree
         try:
-            tvec, rvec = self.tf_listener.lookupTransform(
-                "map",
-                "encoder_baselink",
-                rospy.Time()
-            )
+            tvec, rvec = self.tf_listener.lookupTransform("map","encoder_baselink",rospy.Time())
             self.logdebug(f"Received encoder baselink with rvec({rvec}), tvec({tvec})")
             pose_mat = tf.transformations.quaternion_matrix(rvec)
             pose_mat[:3, 3] = np.array(tvec)
@@ -242,13 +218,12 @@ class FusedLocNode(DTROS):
 
         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e: 
             self.logwarn(e)
-        return 
+        return
 
-    # broadcast a transform matrix as tf type 
+# broadcast a transform matrix as tf type
     def broadcast_tf(self, tf_mat, time, # rospy.Time()
         child="encoder_baselink",
         parent="map"):
-
 
         def _matrix_to_quaternion(r):
             T = np.array((
@@ -257,18 +232,14 @@ class FusedLocNode(DTROS):
                 (0, 0, 0, 0),
                 (0, 0, 0, 1)
             ), dtype=np.float64)
+
             T[0:3, 0:3] = r
             return tf.transformations.quaternion_from_matrix(T)
 
         rvec = _matrix_to_quaternion(tf_mat[:3,:3])
         tvec = tf_mat[:3, 3].reshape(-1)
 
-        self.tf_bcaster.sendTransform(
-                                tvec.tolist(),
-                                rvec.tolist(),
-                                time,
-                                child,
-                                parent)
+        self.tf_bcaster.sendTransform(tvec.tolist(),rvec.tolist(),time,child,parent)
         return 
 
     # when apriltag reappears in camera, update encoder_baselink by call ros service 
@@ -304,20 +275,16 @@ class FusedLocNode(DTROS):
             self.logwarn("Service call failed: %s"%e)
 
     def detect(self, img):
-
         greyscale_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        tags = self.at_detector.detect(greyscale_img, True,
-                            self.at_camera_params, self.at_tag_size)
-
-        # only choose the first tag to compute tfs 
+        tags = self.at_detector.detect(greyscale_img, True,self.at_camera_params, self.at_tag_size)
+        # only choose the first tag to compute tfs
         count = 0
         # select the first tag
         for tag in tags: 
             tf_cameraFapriltag = np.concatenate(
-                (
-                    np.concatenate((tag.pose_R, tag.pose_t),axis=1),  # 3x4
+                (   np.concatenate((tag.pose_R, tag.pose_t),axis=1),  # 3x4
                     np.array([[0.0,0.0,0.0,1.0]]) # 1x4
-                ), 
+                ),
                 axis=0
             )
 
@@ -326,15 +293,11 @@ class FusedLocNode(DTROS):
             # ATTENTION: should rotate the apriltag to meet the output requirement
             self.tf_apriltagFbaselink = self.tf_output_apriltagFori_apriltag @ self.tf_apriltagFcamera @ self.tf_cameraFbaselink
             self.tf_mapFat_baselink = self.tf_mapFapriltag @ self.tf_apriltagFbaselink
-
             count += 1
-
             break
-                     
         return count
 
     def cb_camera_info(self, msg):
-
         # self.logdebug("camera info received! ")
         if not self.camera_info_received:
             self.camera_info = msg
@@ -348,7 +311,6 @@ class FusedLocNode(DTROS):
             self.tf_baselinkFcamera = np.linalg.inv(self.tf_cameraFbaselink)       
             self.log(f"tf_output_cameraFbaselink is \n{self.tf_output_cameraFbaselink}")
             self.camera_info_received = True
-
         return
 
     def cb_compressed_image(self, msg):
@@ -399,11 +361,9 @@ class FusedLocNode(DTROS):
     def run(self):
         rate = rospy.Rate(10)
         while not rospy.is_shutdown():
-
-            # update encoder baselink from encoder localization node 
+            # update encoder baselink from encoder localization node
             self.update_encoder_baselink()
-
-            # initialization requires: 
+            # initialization requires:
             #     camera_info received to get tf_cameraFbaselink
             #     tf_mapFencoder_baselink from encoder localization node  
             if self.camera_info_received and self.first_loc:
@@ -411,48 +371,38 @@ class FusedLocNode(DTROS):
                 if self.fuse_state == fuse_state.USE_WHEEL:
                     # DEBUG
                     self.tf_mapFfused_baselink = self.tf_mapFencoder_baselink @ self.tf_encoder_baselinkFat_baselink
-                    self.broadcast_tf(
-                        self.tf_mapFfused_baselink,
-                        rospy.Time.now(),
-                        "fused_baselink",
-                        "map"
-                    )
+                    self.broadcast_tf(self.tf_mapFfused_baselink,rospy.Time.now(),"fused_baselink","map")
                     # self.broadcast_tf(
                     #     np.linalg.inv(self.tf_mapFfused_baselink),
                     #     rospy.Time.now(),
                     #     "map",
                     #     "fused_baselink"
                     # )
+
                 elif self.fuse_state  == fuse_state.USE_AT:
-
-                    self.broadcast_tf(
-                        self.tf_mapFat_baselink,
-                        rospy.Time.now(),
-                        "at_baselink",
-                        "map"
-                    )
-
+                    self.broadcast_tf(self.tf_mapFat_baselink,rospy.Time.now(),"at_baselink","map")
                     self.tf_mapFfused_baselink = self.tf_mapFat_baselink
-                    self.broadcast_tf(
-                        self.tf_mapFfused_baselink,
-                        rospy.Time.now(),
-                        "fused_baselink",
-                        "map"
-                    )
+                    self.broadcast_tf(self.tf_mapFfused_baselink,rospy.Time.now(),"fused_baselink","map")
+
+                    self.tf_mapFoutput_camera = self.tf_mapFfused_baselink @ np.linalg.inv(
+                        self.tf_output_cameraFbaselink)
+                    # self.logdebug(f"publish tf_mapFoutput_camera:\n{self.tf_mapFoutput_camera}")
+                    # calculate and publish transform from camera to map
+                    self.broadcast_tf(self.tf_mapFoutput_camera,  # camera to baselink
+                                      rospy.Time.now(), "camera", "map")
+
                 else:
                     self.logerr(f"fuse state {self.fuse_state} not implemented!")
                 
                 # self.logdebug(f"publish tf_mapFfused_baselink:\n{self.tf_mapFfused_baselink}")
                 # calculate and publish transform from camera to map
 
-                self.tf_mapFoutput_camera = self.tf_mapFfused_baselink @ np.linalg.inv(self.tf_output_cameraFbaselink)
+                # self.tf_mapFoutput_camera = self.tf_mapFfused_baselink @ np.linalg.inv(self.tf_output_cameraFbaselink)
                 # self.logdebug(f"publish tf_mapFoutput_camera:\n{self.tf_mapFoutput_camera}")
                 # calculate and publish transform from camera to map
-                self.broadcast_tf(
-                    self.tf_mapFoutput_camera, # camera to baselink
-                    rospy.Time.now(),
-                    "camera",
-                    "map")
+                # self.broadcast_tf(self.tf_mapFoutput_camera, # camera to baselink
+                #     rospy.Time.now(),"camera","map")
+
                 #DEBUG
                 # self.tf_baselinkFoutput_camera = np.linalg.inv(self.tf_output_cameraFbaselink)
                 # self.broadcast_tf(
