@@ -198,7 +198,7 @@ class FusedLocNode(DTROS):
             :obj:`numpy array`: the loaded homography matrix
         """
         # load intrinsic calibration
-        cali_file_folder = '/code/catkin_ws/src/cra1_adv/calibrations/camera_extrinsic/'
+        cali_file_folder = '/code/catkin_ws/src/cra2_fuloc3/calibrations/camera_extrinsic/'
         cali_file = cali_file_folder + rospy.get_namespace().strip("/") + ".yaml"
 
         # Locate calibration yaml file or use the default otherwise
